@@ -1,0 +1,27 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (caso adicione dependências no futuro)
+node_modules/
+package-lock.json
+
+# Build / Pack
+*.zip
+*.xpi
+*.crx
+web-ext-artifacts/
+
+# Logs
+*.log
+
+# Environment / Secrets
+.env
+.env.*
