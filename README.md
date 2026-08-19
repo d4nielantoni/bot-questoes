@@ -20,6 +20,6 @@ Ou **Code → Download ZIP** e descompacte. A pasta precisa continuar existindo:
 
 1. Pegue uma chave gratuita em [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 2. Clique no ícone da extensão, cole a chave e salve
-3. Abra o exercício e clique em **Resolver quiz**, no canto inferior direito
+3. Abra o exercício, clique no ícone da extensão e em **Resolver quiz**
 
-A chave fica só no seu navegador. O bot marca as alternativas; enviar é decisão sua. Erros aparecem no próprio botão.
+A chave fica só no seu navegador. O bot marca as alternativas; enviar é decisão sua. O andamento e os erros aparecem no popup — mantenha-o aberto até terminar.

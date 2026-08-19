@@ -6,7 +6,10 @@
   // ramificar o código por navegador. Detecta a API, não o nome do navegador.
   const api = globalThis.browser ?? globalThis.chrome;
 
-  if (document.getElementById('bot-questoes-btn')) return;
+  // O script é injetado a cada navegação; sem esta trava, recarregar dentro do
+  // próprio app registraria ouvintes duplicados.
+  if (window.__botQuestoesCarregado) return;
+  window.__botQuestoesCarregado = true;
 
   const MODEL = 'gemini-3.5-flash-lite';
   // Gemini 3.x trocou thinkingBudget por thinkingLevel. 'minimal' é o indicado
@@ -16,73 +19,14 @@
   const CLICK_DELAY_MS = 50;   // só para a página acompanhar os cliques
   const RETRY_DELAY_MS = 400;  // entre as repescas individuais
 
-  const DEFAULT_LABEL = 'Resolver quiz';
+  let executando = false;
 
-  // Mesma paleta do popup. A cor do botão é o próprio indicador de estado,
-  // por isso cada tom tem um significado.
-  const TONE = {
-    idle:  { bg: 'oklch(0.16 0.008 145)', fg: 'oklch(0.85 0.185 128)' },
-    busy:  { bg: 'oklch(0.16 0.008 145)', fg: 'oklch(0.75 0.012 145)' },
-    ok:    { bg: 'oklch(0.85 0.185 128)', fg: 'oklch(0.18 0.040 128)' },
-    error: { bg: 'oklch(0.27 0.070 25)',  fg: 'oklch(0.83 0.130 25)'  },
-  };
-
-  // ─── Botão flutuante ────────────────────────────────────────────────────────
-
-  // Fica por cima do conteúdo de estudo, então descansa apagado e só ganha
-  // presença quando o ponteiro chega perto.
-  const IDLE_OPACITY = 0.65;
-
-  const btn = document.createElement('button');
-  btn.id = 'bot-questoes-btn';
-  btn.type = 'button';
-  btn.textContent = DEFAULT_LABEL;
-  Object.assign(btn.style, {
-    position: 'fixed',
-    bottom: '20px',
-    right: '20px',
-    zIndex: '2147483647',
-    padding: '7px 13px',
-    background: TONE.idle.bg,
-    color: TONE.idle.fg,
-    border: 'none',
-    borderRadius: '999px',
-    fontSize: '12px',
-    fontWeight: '600',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    letterSpacing: '-0.005em',
-    lineHeight: '1.4',
-    cursor: 'pointer',
-    opacity: String(IDLE_OPACITY),
-    boxShadow: '0 1px 4px oklch(0 0 0 / 0.25)',
-    transition: 'opacity 150ms cubic-bezier(0.22,1,0.36,1), background 150ms, color 150ms',
-    userSelect: 'none',
-    maxWidth: '86vw',
-    textAlign: 'left',
-  });
-
-  const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (REDUCED_MOTION) btn.style.transition = 'none';
-
-  btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-  btn.addEventListener('mouseleave', () => { btn.style.opacity = String(IDLE_OPACITY); });
-  btn.addEventListener('focus', () => {
-    btn.style.opacity = '1';
-    btn.style.outline = `2px solid ${TONE.idle.fg}`;
-    btn.style.outlineOffset = '2px';
-  });
-  btn.addEventListener('blur', () => {
-    btn.style.opacity = String(IDLE_OPACITY);
-    btn.style.outline = 'none';
-  });
-
-  btn.addEventListener('click', startSolver);
-  document.body.appendChild(btn);
-
+  // O andamento vai para o popup. Ele pode estar fechado a qualquer momento,
+  // e a falha de entrega é esperada — não deve interromper a execução.
   function report(text, tone = 'busy') {
-    btn.textContent = text;
-    btn.style.background = TONE[tone].bg;
-    btn.style.color = TONE[tone].fg;
+    try {
+      api.runtime.sendMessage({ type: 'BOT_STATUS', text, tone })?.catch?.(() => {});
+    } catch (_) {}
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -376,37 +320,24 @@
 
   // ─── Disparo pelo botão ─────────────────────────────────────────────────────
 
-  async function startSolver() {
-    if (btn.disabled) return;
-    btn.disabled = true;
+  // ─── Comando vindo do popup ─────────────────────────────────────────────────
 
-    let result;
-    try {
-      result = await solve();
-    } catch (err) {
-      console.error('[Bot Questões] Erro geral:', err);
-      result = { error: err.message };
+  api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== 'BOT_SOLVE') return;
+
+    if (executando) {
+      sendResponse({ error: 'Já está resolvendo.' });
+      return;
     }
 
-    const { applied = 0, total = 0, seconds = 0, error } = result;
+    executando = true;
+    solve()
+      .catch((err) => ({ error: err.message }))
+      .then((result) => {
+        executando = false;
+        sendResponse(result);
+      });
 
-    if (error) {
-      // A causa fica visível na tela: o console provou ser difícil de alcançar.
-      btn.title = error;
-      report(`${applied}/${total} — ${error.slice(0, 60)}`, 'error');
-    } else if (total === 0) {
-      report('Tudo já respondido', 'ok');
-    } else {
-      report(`${applied} de ${total} em ${seconds}s`, 'ok');
-    }
-
-    // Em caso de erro a mensagem fica na tela até o próximo clique.
-    if (!error) {
-      await sleep(2500);
-      btn.title = '';
-      report(DEFAULT_LABEL, 'idle');
-    }
-
-    btn.disabled = false;
-  }
+    return true; // mantém o canal aberto para a resposta assíncrona
+  });
 })();
